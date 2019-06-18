@@ -1,0 +1,49 @@
+---
+title: "connectivity_analysis"
+output: html_notebook
+author: ruonan jia
+time: 6.18.2019
+---
+
+
+
+---
+load packages
+```{r}
+library(ggplot2)
+library(ez)
+library(psych)
+library(lme4)
+```
+
+---
+functions
+```{r}
+data_summary <- function(data, varname, groupnames){
+  # Function to calculate the mean and the standard error
+  # for each group
+  #+++++++++++++++++++++++++
+  # data : a data frame
+  # varname : the name of a column containing the variable
+  #to be summariezed
+  # groupnames : vector of column names to be used as
+  # grouping variables
+  
+  require(plyr)
+  summary_func <- function(x, col){
+    c(mean = mean(x[[col]], na.rm=TRUE),
+      sd = sd(x[[col]], na.rm=TRUE)/sqrt(length(x[[col]])))
+  }
+  data_sum<-ddply(data, groupnames, .fun=summary_func,
+                  varname)
+  data_sum <- rename(data_sum, c("mean" = varname))
+  return(data_sum)
+}
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
