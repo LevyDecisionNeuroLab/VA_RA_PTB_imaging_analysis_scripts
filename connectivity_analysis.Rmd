@@ -42,6 +42,96 @@ data_summary <- function(data, varname, groupnames){
 
 ```
 
+---
+load data
+```{r}
+behav_path <- "D:/Ruonan/Projects in the lab/VA_RA_PTB/Clinical and behavioral"
+image_path <- "D:/Ruonan/Projects in the lab/VA_RA_PTB/Imaging analysis/Imaging_anallysis_082018"
+setwd(behav_path)
+
+# load('data_all_noFemale_05122019.rda')
+# load('data_all_noPCA_04092019.rda')
+load("data_all_noFemale_day1day2_05122019.rda")
+# load("data_all_day1day2_04082019.rda")
+
+pcl <- read.csv('pcl.csv',header = TRUE)
+demo <- read.csv('ed_income.csv', header = TRUE)
+demo$education <- factor(demo$education, order = TRUE, levels = c(1,2,3,4,5,6))
+demo$income <- factor(demo$income, order = TRUE, levels = c(1,2,3,4,5,6,7,8,9,10))
+
+setwd(image_path)
+conn <- read.csv('connectivity_capsvmPFC_GilaieDotanrPPC.csv', header = TRUE)
+
+```
+
+
+---
+merge data
+```{r}
+tball_pcl <-  merge(tball, pcl, by = 'id')
+tb_all <- merge(tball_pcl, demo, by = 'id')
+tb = tb_all[tb_all$isExcluded_imaging==0 & tball$isMale==1,]
+
+conn_tb <- merge(conn, tb, by = 'id')
+```
+
+---
+plot correlation
+```{r}
+#x2plot = 'pcl5_total'
+x2plot = 'total_pm'
+y2plot <- 'conn'
+
+conn_plot <- conn_tb[conn_tb$isDay1 == 1 & conn_tb$isGain == 1 & !conn_tb$group == 'R' & conn_tb$isMal==1 & conn_tb$isExcluded_imaging == 0, ]
+
+
+ggplot(conn_plot, aes(x=eval(parse(text = x2plot)), y=eval(parse(text = y2plot)))) + 
+  geom_point(size=5) +
+  geom_smooth(method=lm, se=TRUE, linetype="dashed", color = "black") + 
+  scale_x_continuous(breaks = c(0, 20, 40, 60, 80, 100, 120), limits = c(0,120)) +
+  #scale_y_continuous(limits = c(-0.6,0.4)) +
+  theme_classic() +
+  theme(text = element_text(size=20),
+        axis.line = element_line(size = 1.5)) +
+  xlab(x2plot) + ylab(y2plot)
+
+test <- corr.test(x=conn_plot$total_pm,
+          y=conn_plot$conn,
+          use = "pairwise",
+          method = "spearman",
+          adjust = "none",
+          alpha=.05
+)
+test
+
+```
+
+
+---
+plot group difference
+```{r}
+conn_plot <- data.frame(conn_tb$id, conn_tb$isGain, conn_tb$isExcluded_imaging, conn_tb$isMale, conn_tb$group, conn_tb$conn)
+
+names(conn_plot) <- c('id', 'isGain', 'isExcluded_imaging', 'isMale', 'group', 'conn')
+
+y2plot = "conn"
+x2plot = "total_pm"
+
+tb2plot <- data_summary(conn_plot[conn_plot$isGain == 0 & conn_plot$isExcluded_imaging == 0 & conn_plot$isMale == 1 & !conn_plot$group == 'R',],varname= y2plot,groupnames=c("group"))
+
+
+# group 
+ggplot(data=tb2plot,aes(x=group, y=eval(parse(text = y2plot)), fill=group)) + 
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=eval(parse(text = y2plot))-sd, ymax=eval(parse(text = y2plot))+sd), width=0.2, position=position_dodge(0.9)) +
+  scale_fill_manual(values = c('#228B22', '#FF8C00'), labels = c('Control', 'PTSD')) +
+  theme_classic() +
+  scale_x_discrete(name = 'Group', limits=c("C", "P"), labels=c("Control","PTSD")) +
+  labs(title=paste('SV',y2plot), y = "Connectivity")
+```
+
+
+
 Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
 
 When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
