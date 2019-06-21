@@ -1,0 +1,553 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+load package
+```{r}
+library(ggplot2)
+library(ez)
+library(psych)
+library(lme4)
+```
+
+functions
+```{r}
+data_summary <- function(data, varname, groupnames){
+  # Function to calculate the mean and the standard error
+  # for each group
+  #+++++++++++++++++++++++++
+  # data : a data frame
+  # varname : the name of a column containing the variable
+  #to be summariezed
+  # groupnames : vector of column names to be used as
+  # grouping variables
+  
+  require(plyr)
+  summary_func <- function(x, col){
+    c(mean = mean(x[[col]], na.rm=TRUE),
+      sd = sd(x[[col]], na.rm=TRUE)/sqrt(length(x[[col]])))
+  }
+  data_sum<-ddply(data, groupnames, .fun=summary_func,
+                  varname)
+  data_sum <- rename(data_sum, c("mean" = varname))
+  return(data_sum)
+}
+
+```
+
+
+load data
+```{r}
+behav_path <- "D:/Ruonan/Projects in the lab/VA_RA_PTB/Clinical and behavioral"
+image_path <- "D:/Ruonan/Projects in the lab/VA_RA_PTB/Imaging analysis/Imaging_anallysis_082018"
+setwd(behav_path)
+
+load('data_all_noFemale_06212019.rda')
+# load('data_all_noPCA_04092019.rda')
+# load("data_all_noFemale_day1day2_05122019.rda")
+# load("data_all_day1day2_04082019.rda")
+
+pcl <- read.csv('pcl.csv',header = TRUE)
+demo <- read.csv('ed_income.csv', header = TRUE)
+demo$education <- factor(demo$education, order = TRUE, levels = c(1,2,3,4,5,6))
+demo$income <- factor(demo$income, order = TRUE, levels = c(1,2,3,4,5,6,7,8,9,10))
+
+setwd(image_path)
+# beta <- read.csv('BetaExtracts_uniSV_GLM_ROI_uniSV_femaleOut_noRimt_Loss_rCaudate318.csv', header = TRUE)
+# beta <- read.csv('BetaExtracts_SV_day1day2_respcorr_GLM_ROI_Bartra_vStr.csv', header = TRUE)
+# beta <- read.csv('BetaExtracts_SV_day1day2_respcorr_GLM_ROI_Bartra_vmPFC.csv', header = TRUE)
+# beta <- read.csv('BetaExtracts_SV_day1day2_respcorr_GLM_ROI_none_day2_respcorr_GLM_Capstotal_vmPFC448.csv', header = TRUE)
+
+# beta <- read.csv('BetaExtracts_none_respcorr_day2_GLM_ROI_none_respcorr_day2_GLM_femaleOut_noRemit_All_comp1_dACC192.csv', header = TRUE)
+#beta <- read.csv('BetaExtracts_SVGLM_ROI_Bartra_vmPFC.csv', header = TRUE)
+#beta <- read.csv('BetaExtracts_SVGLM_ROI_none_day2_GLM_femaleOut_noRemit_All_Capstotal_vmPFC450.csv', header = TRUE)
+#beta <- read.csv('BetaExtracts_SVGLM_ROI_none_day2_GLM_femaleOut_noRemit_All_comp1_ACC200.csv', header = TRUE)
+#beta <- read.csv('BetaExtracts_SVGLM_ROI_SV_AL_PTSD_ltemporal1781.csv', header = TRUE)
+#beta <- read.csv('BetaExtracts_SVGLM_ROI_SV_AL_Control_rMFG365.csv', header = TRUE)
+
+beta <- read.csv('BetaExtracts_none_respcorr_day2_GLM_ROI_none_respcorr_day2_GLM_femaleOut_noRemit_All_Capstotal_vmPFC448.csv', header = TRUE)
+#beta <- read.csv('BetaExtracts_none_day2_GLM_ROI_none_day2_GLM_femaleOut_noRemit_All_comp1_ACC200.csv', header = TRUE)
+
+
+names(beta)[1] = 'id'
+
+# for day1 and day2 analysis
+#beta1 <- read.csv('BetaExtracts_none_day1_GLM_ROI_none_day2_GLM_femaleOut_noRemit_All_Capstotal_vmPFC450.csv', header = TRUE)
+#beta2 <- read.csv('BetaExtracts_none_day2_GLM_ROI_none_day2_GLM_femaleOut_noRemit_All_Capstotal_vmPFC450.csv', header = TRUE)
+
+#beta1 <- read.csv('BetaExtracts_none_day1_GLM_ROI_none_day2_GLM_femaleOut_noRemit_All_comp1_ACC200.csv', header = TRUE)
+#beta2 <- read.csv('BetaExtracts_none_day2_GLM_ROI_none_day2_GLM_femaleOut_noRemit_All_comp1_ACC200.csv', header = TRUE)
+
+
+```
+Combine pcl scores into clinical table
+```{r}
+
+tball_pcl <-  merge(tball, pcl, by = 'id')
+tb_all <- merge(tball_pcl, demo, by = 'id')
+
+tb = tb_all[tb_all$isExcluded_imaging==0 & tball$isMale==1,]
+```
+
+
+reorganize beta data with day1 and day2, and conmbine with behavioral
+```{r}
+beta1$isDay1 <- 1
+beta2$isDay1 <- 0
+
+beta <- rbind(beta1, beta2)
+
+beta$beta_general_all <- (beta$Amb_gains_Display + beta$Risk_gains_Display + beta$Amb_loss_Display + beta$Risk_loss_Display)/4
+
+beta_g <- beta[, c(1,2,3,6,7,8,9)]
+beta_l <- beta[, c(1,4,5,6,7,8,9)]
+colnames(beta_g)[2:3] <- c('beta_general_a', 'beta_general_r')
+colnames(beta_l)[2:3] <- c('beta_general_a',  'beta_general_r')
+names(beta_g)
+names(beta_l)
+
+
+beta_g$isGain <- 1
+beta_l$isGain <- 0
+
+
+beta_gl <- rbind(beta_g, beta_l)
+beta_gl$isGain <- as.factor(beta_gl$isGain)
+beta_gl$isDay1 <- as.factor(beta_gl$isDay1)
+
+names(beta_gl)[1] <- 'id'
+```
+
+
+reorganize beta data with NO paramatric modulator
+```{r}
+beta$beta_general_all <- (beta$Amb_gains_Display + beta$Risk_gains_Display + beta$Amb_loss_Display + beta$Risk_loss_Display)/4 
+names(beta)
+
+beta_g <- beta[, c(1,2,3,6,7,8)]
+beta_l <- beta[, c(1,4,5,6,7,8)]
+colnames(beta_g)[2:3] <- c('beta_general_a', 'beta_general_r')
+colnames(beta_l)[2:3] <- c('beta_general_a',  'beta_general_r')
+names(beta_g)
+names(beta_l)
+
+beta_g$isGain <- 1
+beta_l$isGain <- 0
+
+
+beta_gl <- rbind(beta_g, beta_l)
+beta_gl$isGain <- as.factor(beta_gl$isGain)
+```
+
+
+reorganize beta data with uniSV GLM
+```{r}
+names(beta)
+
+# reorganize based on gain and loss
+beta_g <- beta[, c(1,2,3,6,7)]
+beta_l <- beta[, c(1,4,5,6,7)]
+colnames(beta_g)[2:3] <- c('beta_general', 'beta_param')
+colnames(beta_l)[2:3] <- c('beta_general', 'beta_param')
+names(beta_g)
+names(beta_l)
+
+beta_g$isGain <- 1
+beta_l$isGain <- 0
+
+
+beta_gl <- rbind(beta_g, beta_l)
+beta_gl$isGain <- as.factor(beta_gl$isGain)
+
+``` 
+
+
+reorganize beta data with paramatric modulator
+```{r}
+names(beta)
+
+# extract specific conditions
+#beta_ag <- beta[, c(1,2,3,10,11)]
+#beta_rg <- beta[, c(1,4,5,10,11)]
+#beta_al <- beta[, c(1,6,7,10,11)]
+#beta_rl <- beta[, c(1,8,9,10,11)]
+#names(beta_rl)
+
+# change name
+#colnames(beta_ag)[2:3] <- c('beta_general', 'beta_sv')
+#colnames(beta_rg)[2:3] <- c('beta_general', 'beta_sv')
+#colnames(beta_al)[2:3] <- c('beta_general', 'beta_sv')
+#colnames(beta_rl)[2:3] <- c('beta_general', 'beta_sv')
+#names(beta_rl)
+
+# add condition
+#beta_ag$isGain <- 1
+#beta_rg$isGain <- 1
+#beta_al$isGain <- 0
+#beta_rl$isGain <- 0
+
+# reorganize based on gain and loss
+beta_g <- beta[, c(1,2,3,4,5,10,11)]
+beta_l <- beta[, c(1,6,7,8,9,10,11)]
+colnames(beta_g)[2:5] <- c('beta_general_a', 'beta_param_a', 'beta_general_r', 'beta_param_r')
+colnames(beta_l)[2:5] <- c('beta_general_a', 'beta_param_a', 'beta_general_r', 'beta_param_r')
+names(beta_g)
+names(beta_l)
+
+beta_g$isGain <- 1
+beta_l$isGain <- 0
+
+
+beta_gl <- rbind(beta_g, beta_l)
+beta_gl$isGain <- as.factor(beta_gl$isGain)
+
+``` 
+
+merge table
+```{r}
+beta_all <- merge(tb, beta_gl, key = intersect(names(tb), names(beta_gl)))
+# beta_all$beta_param_ar = (beta_all$beta_param_a + beta_all$beta_param_r)/2
+beta_all$beta_general_ar = (beta_all$beta_general_a + beta_all$beta_general_r)/2
+names(beta_all)
+```
+
+calculate neural day12 change and behavioral day12 change
+```{r}
+# calculate difference
+for (idx in 1:nrow(beta_all)){
+  
+  if ((any(beta_all$id == beta_all$id[idx] & beta_all$isDay1 == 0 & beta_all$isGain == beta_all$isGain[idx]) & any(beta_all$id == beta_all$id[idx] & beta_all$isDay1 == 1 & beta_all$isGain == beta_all$isGain[idx])) == TRUE){
+    
+    # risk attitude mb
+    beta_all$alpha_t_diff[idx] <- beta_all$alpha_t[beta_all$id == beta_all$id[idx] & beta_all$isDay1 == 0 & beta_all$isGain == beta_all$isGain[idx]] - beta_all$alpha_t[beta_all$id == beta_all$id[idx] & beta_all$isDay1 == 1 & beta_all$isGain == beta_all$isGain[idx]]
+    
+    # ambiguity attitude mb
+    beta_all$beta_t_diff[idx] <- beta_all$beta_t[beta_all$id == beta_all$id[idx] & beta_all$isDay1 == 0 & beta_all$isGain == beta_all$isGain[idx]] - beta_all$beta_t[beta_all$id == beta_all$id[idx] & beta_all$isDay1 == 1 & beta_all$isGain == beta_all$isGain[idx]]
+    
+    # risk attitude mf
+    beta_all$r_diff[idx] <- beta_all$r[beta_all$id == beta_all$id[idx] & beta_all$isDay1 == 0 & beta_all$isGain == beta_all$isGain[idx]] - beta_all$r[beta_all$id == beta_all$id[idx] & beta_all$isDay1 == 1 & beta_all$isGain == beta_all$isGain[idx]]
+    
+    # ambiguity attitude mb
+    beta_all$a_r50_diff[idx] <- beta_all$a_r50[beta_all$id == beta_all$id[idx] & beta_all$isDay1 == 0 & beta_all$isGain == beta_all$isGain[idx]] - beta_all$a_r50[beta_all$id == beta_all$id[idx] & beta_all$isDay1 == 1 & beta_all$isGain == beta_all$isGain[idx]]
+    
+    # neural risk
+    beta_all$beta_general_r_diff[idx] <- beta_all$beta_general_r[beta_all$id == beta_all$id[idx] & beta_all$isDay1 == 0 & beta_all$isGain == beta_all$isGain[idx]] - beta_all$beta_general_r[beta_all$id == beta_all$id[idx] & beta_all$isDay1 == 1 & beta_all$isGain == beta_all$isGain[idx]]
+    
+    # neural ambig
+    beta_all$beta_general_a_diff[idx] <- beta_all$beta_general_a[beta_all$id == beta_all$id[idx] & beta_all$isDay1 == 0 & beta_all$isGain == beta_all$isGain[idx]] - beta_all$beta_general_a[beta_all$id == beta_all$id[idx] & beta_all$isDay1 == 1 & beta_all$isGain == beta_all$isGain[idx]]
+    
+  }
+}
+
+
+
+```
+
+
+plot day1day2 neural and behavioral change correlation
+```{r}
+isGain2plot <- 1
+x2plot <-  'alpha_t_diff'
+y2plot <-  'beta_general_r_diff'
+
+beta2plot <-  beta_all[beta_all$isGain == isGain2plot & beta_all$isDay1 == 1 &beta_all$isMale == 1 & !beta_all$group == 'R',]
+
+ggplot(data=beta2plot, aes(x = eval(parse(text = x2plot)), y = eval(parse(text = y2plot)))) +
+  geom_point() +
+  ggtitle('neural behavioral correlation') + xlab(x2plot) + ylab(y2plot)
+
+cor.test(x = beta2plot$alpha_t_diff, y = beta2plot$beta_general_r_diff)
+
+```
+
+
+
+multiple linear regression
+```{r}
+isGain2lm = 1
+beta_lm <- beta_all[beta_all$isDay1 == 1 & beta_all$isGain == isGain2lm & beta_all$isExcluded_imaging==0 & beta_all$isMale == 1 & !beta_all$group == 'R',]
+model1 <- lm(beta_general_all ~ age + kbit + R_F_I_PastMonth_ + A_F_I_PastMonth_ + N_F_I_PastMonth_ + DA_F_I_PastMonth_ + AA_F_I_PastMonth_, na.action=na.omit, data = beta_lm)
+model_summary <- summary(model1)
+model_sum <-data.frame(model_summary$coefficients)
+
+colnames(model_sum)
+
+model_sum$var <- c(1,2,3,4,5,6,7,8)
+
+
+ggplot(data=model_sum[2:8,c(1:2,5)],aes(x = var, y=Estimate)) + 
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=Estimate-Std..Error, ymax=Estimate+Std..Error), width=0.2, position=position_dodge(0.9)) +
+  theme_classic() +
+  scale_x_continuous(breaks = c(2:8), labels=c('age', 'KBIT', 'Re-exp', 'Avoid', 'Numb', 'Dys', 'Anx')) +
+  labs(title='', y = "Coefficient")
+  
+```
+
+multiple linear regression, behavioral and neural to predict symptom
+```{r}
+isGain2lm = 0
+beta_gain <- beta_all[beta_all$isGain == 1 & beta_all$isExcluded_imaging==0 & beta_all$isMale == 1 & !beta_all$group == 'R',]
+beta_loss <- beta_all[beta_all$isGain == 0 & beta_all$isExcluded_imaging==0 & beta_all$isMale == 1 & !beta_all$group == 'R',]
+
+colnames(beta_gain)[53] <- 'alpha_t_gain'
+colnames(beta_gain)[54] <- 'beta_t_gain'
+colnames(beta_gain)[105] <- 'beta_general_a_gain'
+colnames(beta_gain)[106] <- 'beta_general_r_gain'
+colnames(beta_gain)[110] <- 'beta_general_gain'
+beta_gain <- beta_gain[,c(1, 16:23, 26:49, 53:93, 105, 106, 109, 110)]
+
+colnames(beta_loss)[53] <- 'alpha_t_loss'
+colnames(beta_loss)[54] <- 'beta_t_loss'
+colnames(beta_loss)[105] <- 'beta_general_a_loss'
+colnames(beta_loss)[106] <- 'beta_general_r_loss'
+colnames(beta_loss)[110] <- 'beta_general_loss'
+beta_loss <- beta_loss[,c(1, 16:23, 26:49, 53:93, 105, 106, 109, 110)]
+
+beta_gainloss <- merge(beta_gain, beta_loss, by = intersect(names(beta_gain), names(beta_loss)))
+
+beta_lm <- beta_gainloss[beta_gainloss$isExcluded_imaging==0 & beta_gainloss$isMale == 1 & !beta_gainloss$group == 'R',]
+
+colnames(beta_lm)[14]<-'Reexp'
+colnames(beta_lm)[15]<-'Avoid'
+colnames(beta_lm)[16]<-'Numb'
+colnames(beta_lm)[17]<-'Dysphoric'
+colnames(beta_lm)[18]<-'Anxious'
+colnames(beta_lm)[19]<-'CAPS_Total'
+
+model1 <- lm(CAPS_Total ~ age + kbit + alpha_t_gain + beta_t_gain + alpha_t_loss + beta_t_loss + beta_general_r_gain + beta_general_a_gain + beta_general_r_loss + beta_general_a_loss, na.action=na.omit, data = beta_lm)
+
+model_summary <- summary(model1)
+model_sum <-data.frame(model_summary$coefficients)
+
+colnames(model_sum)
+
+model_sum$var <- c(1,2,3,4,5,6,7,8,9,10)
+
+ggplot(data=model_sum[2:10,c(1:2,5)],aes(x = var, y=Estimate)) + 
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=Estimate-Std..Error, ymax=Estimate+Std..Error), width=0.2, position=position_dodge(0.9)) +
+  theme_classic() +
+  scale_x_continuous(breaks = c(2:10), labels=c('age', 'KBIT', 'behav_rg', 'behav_ag', 'behav_rl', 'behav_al', 'nerual_rg', 'neural_ag', 'neural_rl', 'neural_al')) +
+  labs(title='All conditions', y = "Coefficient")
+  
+```
+
+Correlation between neural and symptom, accounting for income and other factors
+```{r}
+isGain2lm = 0
+beta_lm <- beta_all[beta_all$isDay1 == 1 & beta_all$isGain == isGain2lm & !beta_all$group == 'R',]
+
+model2 <- lm(beta_general_all ~ pcl5_total + age + kbit + education + income, data = beta_lm)
+
+
+model_summary <- summary(model2)
+model_summary
+anova_summary <- anova(model2)
+anova_summary
+model_sum <-data.frame(model_summary$coefficients)
+
+# plot residuals
+residual <- model2$residuals
+beta_lm$residual[is.element(rownames(beta_lm), names(residual))] <- residual
+x2plot = 'pcl5_total'
+ggplot(beta_lm, aes(x=eval(parse(text = x2plot)), y=residual)) + 
+  geom_point(size=2) +
+  geom_smooth(method=lm, se=TRUE, linetype="dashed", color = "black") + 
+  ggtitle('residual plot') + xlab(x2plot) + ylab('residual')
+
+#colnames(model_sum)
+
+# levels and order of education and income
+unique(beta_lm$education)
+unique(beta_lm$income)
+
+model_sum$var <- c(1,2,3,4,5,6,7,8,9,10,11, 12, 13, 14,15)
+
+
+ggplot(data=model_sum[2:15,c(1:2,5)],aes(x = var, y=Estimate)) + 
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=Estimate-Std..Error, ymax=Estimate+Std..Error), width=0.2, position=position_dodge(0.9)) +
+  theme_classic() +
+  scale_x_continuous(breaks = c(2:15), labels=c('pclm', 'age', 'Kbit', 'ed1', 'ed2', 'ed3', 'ed4', 'income1','income2','income3','income4','income5','income6','income7')) +
+  labs(title='Decision context', y = "Coefficient")
+
+```
+
+
+plot group difference
+```{r}
+beta_plot <- data.frame(beta_all$id, beta_all$isDay1, beta_all$isGain, beta_all$isExcluded_imaging, beta_all$isMale, beta_all$group, beta_all$beta_general_a, beta_all$beta_param_a, beta_all$beta_general_r, beta_all$beta_param_r, beta_all$beta_general_ar, beta_all$beta_param_ar)
+
+names(beta_plot) <- c('id', 'isDay1', 'isGain', 'isExcluded_imaging', 'isMale', 'group', 'beta_general_a', 'beta_param_a', 'beta_general_r', 'beta_param_r', 'beta_general_ar', 'beta_param_ar')
+
+# subjects to exclude for matching subjective values between 
+exclude_gain <- c(38, 75, 1291, 56, 96, 1273)
+exclude_loss <- c(30, 1069, 56, 53, 60, 115, 1304, 1305, 1309, 1340, 45, 87, 88)
+exclude <- c(38, 75, 1291, 56, 96, 1273, 30, 1069, 53, 60, 115, 1304, 1305, 1309, 1340, 45, 87, 88)
+
+y2plot = "beta_param_a"
+
+# no exclusion
+tb2plot <- data_summary(beta_plot[beta_plot$isDay1 ==1 & beta_plot$isExcluded_imaging == 0 & beta_plot$isMale == 1 & !beta_plot$group == 'R',],varname= y2plot,groupnames=c("isGain","group"))
+
+# with exclusion
+tb2plot <- data_summary(beta_plot[!is.element(beta_plot$id, exclude_loss) & beta_plot$isDay1 ==1 & beta_plot$isExcluded_imaging == 0 & beta_plot$isMale == 1 & !beta_plot$group == 'R',],varname= y2plot,groupnames=c("isGain","group"))
+
+
+ggplot(data=tb2plot,aes(x=isGain, y=eval(parse(text = y2plot)), fill=group)) + 
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=eval(parse(text = y2plot))-sd, ymax=eval(parse(text = y2plot))+sd), width=0.2, position=position_dodge(0.9)) +
+  scale_fill_manual(values = c('#228B22', '#FF8C00'), labels = c('Control', 'PTSD')) +
+  theme_classic() +
+  scale_x_discrete(name = 'Decision Domain', limits=c("1", "0"), labels=c("Gain","Loss")) +
+  labs(title=paste('SV',y2plot), y = "SV signal")
+
+ggplot(data=beta_plot[beta_plot$isDay1 ==1 & !is.element(beta_plot$id, exclude_loss) & beta_plot$isExcluded_imaging == 0 & beta_plot$isMale == 1 & !beta_plot$group == 'R',],aes(x=isGain, y=eval(parse(text = y2plot)), fill=group)) + 
+  geom_boxplot(width = 0.5, position = position_dodge((0.9)), alpha = 0.7) +
+  geom_dotplot(binaxis='y', binwidth = 0.01, dotsize = 1, stackdir='center',position=position_jitterdodge(0.9)) +
+  scale_fill_manual(values = c('#228B22', '#FF8C00'), labels = c('Control', 'PTSD')) +
+  theme_classic() +
+  scale_x_discrete(name ="Decision Domain", limits=c("1", "0"), labels=c("Gain","Loss")) +
+  labs(title=paste('SV',y2plot), y = "SV signal")
+
+
+var_anova = ezANOVA(data=beta_plot[beta_plot$isDay1 ==1 & beta_plot$isExcluded_imaging == 0 & beta_plot$isMale == 1 & !beta_plot$group == 'R',], 
+                   dv = beta_param_a,
+                   wid = .(id),
+                   within = .(isGain),
+                   between = .(group),
+                   type = 3,
+                   detailed = TRUE,
+                   return_aov = TRUE
+)
+
+var_anova
+
+```
+
+
+
+plot group difference unSV GLM
+```{r}
+beta_plot <- data.frame(beta_all$id, beta_all$isGain, beta_all$isExcluded_imaging, beta_all$isMale, beta_all$group, beta_all$beta_general, beta_all$beta_param)
+
+names(beta_plot) <- c('id', 'isGain', 'isExcluded_imaging', 'isMale', 'group', 'beta_general', 'beta_param')
+
+y2plot = "beta_param"
+
+tb2plot <- data_summary(beta_plot[beta_plot$isGain == 0 & beta_plot$isExcluded_imaging == 0 & beta_plot$isMale == 1 & !beta_plot$group == 'R',],varname= y2plot,groupnames=c("group"))
+
+
+ggplot(data=tb2plot,aes(x=group, y=eval(parse(text = y2plot)), fill=group)) + 
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=eval(parse(text = y2plot))-sd, ymax=eval(parse(text = y2plot))+sd), width=0.2, position=position_dodge(0.9)) +
+  scale_fill_manual(values = c('#228B22', '#FF8C00'), labels = c('Control', 'PTSD')) +
+  theme_classic() +
+  scale_x_discrete(name = 'Group', limits=c("C", "P"), labels=c("Control","PTSD")) +
+  labs(title=paste('SV',y2plot), y = "SV signal")
+
+
+var_anova = ezANOVA(data=beta_plot[beta_plot$isGain == 0 & beta_plot$isExcluded_imaging == 0 & beta_plot$isMale == 1 & !beta_plot$group == 'R',], 
+                   dv = beta_param,
+                   wid = .(id),
+                   between = .(group),
+                   type = 3,
+                   detailed = TRUE,
+                   return_aov = TRUE
+)
+
+var_anova
+
+```
+
+
+
+
+
+
+
+plot correlation
+```{r}
+
+#x2plot = 'pcl5_total'
+x2plot = 'total_pm'
+y2plot <- 'beta_param_r'
+isGain2plot <- 1
+
+beta_plot <- beta_all[beta_all$isDay1 == 1 & beta_all$isGain == isGain2plot & !beta_all$group == 'R', ]
+
+# exclude caps with 0
+# beta_plot <- beta_all[beta_all$isDay1 == 1 & beta_all$isGain == isGain2plot & !beta_all$group == 'R' & !beta_all$total_pm == 0, ]
+
+
+ggplot(beta_plot, aes(x=eval(parse(text = x2plot)), y=eval(parse(text = y2plot)))) + 
+  geom_point(size=5) +
+  geom_smooth(method=lm, se=TRUE, linetype="dashed", color = "black") + 
+  scale_x_continuous(breaks = c(0, 20, 40, 60, 80, 100, 120), limits = c(0,120)) +
+  # scale_x_continuous(breaks = c(-4,-2,0,2,4,6), limits = c(-4,6)) +
+  #scale_y_continuous(limits = c(-0.6,0.4)) +
+  theme_classic() +
+  theme(text = element_text(size=20),
+        axis.line = element_line(size = 1.5)) +
+  ggtitle(paste('Domain', isGain2plot, 'Uncertainty', y2plot)) + xlab(x2plot) + ylab(y2plot)
+
+test <- corr.test(x=beta_plot$total_pm,
+          y=beta_plot$beta_param_r,
+          use = "pairwise",
+          method = "pearson",
+          adjust = "none",
+          alpha=.05
+)
+test
+```
+
+Plot correlation between symptom and neural residuals after regressing out other factors
+```{r}
+isGain2lm = 1
+beta_lm <- beta_all[beta_all$isDay1 == 1 & beta_all$isGain == isGain2lm & !beta_all$group == 'R',]
+
+model2 <- lm(beta_general_r ~ age + kbit + education + income, data = beta_lm)
+
+# get residuals
+residual <- model2$residuals
+beta_lm$residual[is.element(rownames(beta_lm), names(residual))] <- residual
+
+
+# plot correlation between symptosm and residuals
+x2plot = 'total_pm'
+y2plot <- 'residual'
+
+ggplot(beta_lm, aes(x=eval(parse(text = x2plot)), y=eval(parse(text = y2plot)))) + 
+  geom_point(size=2) +
+  geom_smooth(method=lm, se=TRUE, linetype="dashed", color = "black") + 
+  ggtitle(paste('Domain', isGain2lm)) + xlab(x2plot) + ylab(y2plot)
+
+test <- corr.test(x=beta_lm$total_pm,
+          y=beta_lm$residual,
+          use = "pairwise",
+          method = "pearson",
+          adjust = "none",
+          alpha=.05
+)
+test
+
+model_summary <- summary(model2)
+model_summary
+anova_summary <- anova(model2)
+anova_summary
+model_sum <-data.frame(model_summary$coefficients)
+
+```
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
