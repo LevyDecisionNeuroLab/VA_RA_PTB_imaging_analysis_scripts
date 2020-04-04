@@ -1,0 +1,332 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+package
+```{r}
+library(leaps)
+library(ggplot2)
+library(glmnet)
+```
+
+load data
+```{r}
+behav_path <- "E:/Ruonan/Projects in the lab/VA_RA_PTB/Clinical and behavioral"
+image_path <- "E:/Ruonan/Projects in the lab/VA_RA_PTB/Imaging analysis/Imaging_anallysis_082018"
+setwd(behav_path)
+
+load('data_all_noFemale_08272019.rda')
+# load('data_all_noPCA_04092019.rda')
+# load("data_all_noFemale_day1day2_08272019.rda")
+# load("data_all_day1day2_04082019.rda")
+
+pcl <- read.csv('pcl.csv',header = TRUE)
+demo <- read.csv('ed_income.csv', header = TRUE)
+demo$education <- factor(demo$education, order = TRUE, levels = c(1,2,3,4,5,6))
+demo$income <- factor(demo$income, order = TRUE, levels = c(1,2,3,4,5,6,7,8,9,10))
+
+setwd(image_path)
+
+beta <- read.csv('BetaExtracts_none_respcorr_day2_GLM_ROI_none_respcorr_day2_GLM_femaleOut_noRemit_All_Capstotal_vmPFC448.csv', header = TRUE)
+
+# beta <- read.csv('BetaExtracts_none_respcorr_day2_GLM_ROI_Bartra_orig_vmPFC.csv', header = TRUE)
+
+# beta <- read.csv('BetaExtracts_SV_day1day2_respcorr_GLM_ROI_none_respcorr_day2_GLM_femaleOut_noRemit_All_Capstotal_vmPFC448.csv', header = TRUE)
+
+# beta <- read.csv('BetaExtracts_SV_day1day2_respcorr_GLM_ROI_Bartra_original_vmPFC.csv', header = TRUE)
+
+# beta <- read.csv('BetaExtracts_SV_day1day2_respcorr_GLM_ROI_Bartra_original_vStr.csv', header = TRUE)
+
+names(beta)[1] = 'id'
+
+# for day1 and day2 analysis
+#beta1 <- read.csv('BetaExtracts_none_day1_GLM_ROI_none_day2_GLM_femaleOut_noRemit_All_Capstotal_vmPFC450.csv', header = TRUE)
+#beta2 <- read.csv('BetaExtracts_none_day2_GLM_ROI_none_day2_GLM_femaleOut_noRemit_All_Capstotal_vmPFC450.csv', header = TRUE)
+
+#beta1 <- read.csv('BetaExtracts_none_day1_GLM_ROI_none_day2_GLM_femaleOut_noRemit_All_comp1_ACC200.csv', header = TRUE)
+#beta2 <- read.csv('BetaExtracts_none_day2_GLM_ROI_none_day2_GLM_femaleOut_noRemit_All_comp1_ACC200.csv', header = TRUE)
+
+
+```
+
+Combine pcl scores into clinical table
+```{r}
+
+tball_pcl <-  merge(tball, pcl, by = 'id')
+tb_all <- merge(tball_pcl, demo, by = 'id')
+
+tb = tb_all[tb_all$isExcluded_imaging==0 & tball$isMale==1,]
+```
+
+reorganize beta data with NO paramatric modulator
+```{r}
+beta$beta_general_all <- (beta$Amb_gains_Display + beta$Risk_gains_Display + beta$Amb_loss_Display + beta$Risk_loss_Display)/4 
+names(beta)
+
+beta_g <- beta[, c(1,2,3,6,7,8)]
+beta_l <- beta[, c(1,4,5,6,7,8)]
+colnames(beta_g)[2:3] <- c('beta_general_a', 'beta_general_r')
+colnames(beta_l)[2:3] <- c('beta_general_a',  'beta_general_r')
+names(beta_g)
+names(beta_l)
+
+beta_g$isGain <- 1
+beta_l$isGain <- 0
+
+
+beta_gl <- rbind(beta_g, beta_l)
+beta_gl$isGain <- as.factor(beta_gl$isGain)
+names(beta_gl)
+```
+
+reorganize beta data with paramatric modulator
+```{r}
+names(beta)
+
+# extract specific conditions
+#beta_ag <- beta[, c(1,2,3,10,11)]
+#beta_rg <- beta[, c(1,4,5,10,11)]
+#beta_al <- beta[, c(1,6,7,10,11)]
+#beta_rl <- beta[, c(1,8,9,10,11)]
+#names(beta_rl)
+
+# change name
+#colnames(beta_ag)[2:3] <- c('beta_general', 'beta_sv')
+#colnames(beta_rg)[2:3] <- c('beta_general', 'beta_sv')
+#colnames(beta_al)[2:3] <- c('beta_general', 'beta_sv')
+#colnames(beta_rl)[2:3] <- c('beta_general', 'beta_sv')
+#names(beta_rl)
+
+# add condition
+#beta_ag$isGain <- 1
+#beta_rg$isGain <- 1
+#beta_al$isGain <- 0
+#beta_rl$isGain <- 0
+
+# reorganize based on gain and loss
+beta_g <- beta[, c(1,2,3,4,5,10,11)]
+beta_l <- beta[, c(1,6,7,8,9,10,11)]
+colnames(beta_g)[2:5] <- c('beta_general_a', 'beta_param_a', 'beta_general_r', 'beta_param_r')
+colnames(beta_l)[2:5] <- c('beta_general_a', 'beta_param_a', 'beta_general_r', 'beta_param_r')
+names(beta_g)
+names(beta_l)
+
+beta_g$isGain <- 1
+beta_l$isGain <- 0
+
+
+beta_gl <- rbind(beta_g, beta_l)
+beta_gl$isGain <- as.factor(beta_gl$isGain)
+
+``` 
+
+merge table
+```{r}
+beta_all <- merge(tb, beta_gl, key = intersect(names(tb), names(beta_gl)))
+# beta_all$beta_param_ar = (beta_all$beta_param_a + beta_all$beta_param_r)/2
+beta_all$beta_general_ar = (beta_all$beta_general_a + beta_all$beta_general_r)/2
+# names(beta_all)
+
+beta_all$id = as.factor(beta_all$id)
+beta_all$idGain = as.factor(beta_all$isGain)
+beta_all$group = as.factor(beta_all$group)
+```
+
+CAPS cluster
+```{r}
+isGain2lm = 0
+beta_lm <- beta_all[beta_all$isGain == isGain2lm & beta_all$isExcluded_imaging==0 & beta_all$isMale == 1 & !beta_all$group == 'R',]
+names(beta_all)
+
+beta_corplot <- beta_lm[, c(20, 22, 30:35, 105:106, 109:110)]
+colnames(beta_corplot) <- c('age', 'kbit', 'Reexp', 'Avoid', 'Numb', 'Dys', 'Anx', 'Total', 'beta_ambig', 'beta_risk', 'beta_all', 'beta_ar')
+beta_norm <- data.frame(scale(beta_corplot))
+
+model1 <- lm(beta_all ~ Reexp + Avoid + Numb + Dys + Anx + age + kbit, na.action=na.omit, data = beta_norm)
+model_summary <- summary(model1)
+model_sum <-data.frame(model_summary$coefficients)
+
+colnames(model_sum)
+
+model_sum$var <- c(1,2,3,4,5,6,7,8)
+
+ggplot(data=model_sum[2:8,c(1:2,5)],aes(x = var, y=Estimate)) + 
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=Estimate-Std..Error, ymax=Estimate+Std..Error), width=0.2, position=position_dodge(0.9)) +
+  theme_classic() +
+  scale_x_continuous(breaks = c(2:8), labels=c('Re-exp', 'Avoid', 'Numb', 'Dys', 'Anx', 'age', 'KBIT')) +
+  labs(title='', y = "Standardized Coefficient")
+```
+
+caps cluster variable selection
+```{r}
+names(beta_norm)
+beta_select <- beta_norm[,c(3:7, 1:2,11)]
+names(beta_select)
+
+# exhaustive
+regfit.full <- regsubsets(beta_all~., beta_select)
+reg.summary <- summary(regfit.full)
+
+
+plot(regfit.full, scale="bic")
+plot(regfit.full, scale="Cp")
+plot(regfit.full, scale="adjr2")
+
+reg.summary
+names(reg.summary)
+reg.summary$bic
+
+regfit.bwd <- regsubsets(beta_all~., beta_select, method = "backward")
+reg.summary <- summary(regfit.bwd)
+
+plot(regfit.bwd, scale="bic")
+plot(regfit.bwd, scale="Cp")
+plot(regfit.bwd, scale="adjr2")
+
+
+```
+
+multiple linear regression, behavioral and neural to predict symptom
+```{r}
+
+beta_gain <- beta_all[beta_all$isGain == 1 & beta_all$isExcluded_imaging==0 & beta_all$isMale == 1 & !beta_all$group == 'R',]
+beta_loss <- beta_all[beta_all$isGain == 0 & beta_all$isExcluded_imaging==0 & beta_all$isMale == 1 & !beta_all$group == 'R',]
+
+colnames(beta_gain)[53] <- 'alpha_t_gain'
+colnames(beta_gain)[54] <- 'beta_t_gain'
+colnames(beta_gain)[105] <- 'beta_general_a_gain'
+colnames(beta_gain)[106] <- 'beta_general_r_gain'
+colnames(beta_gain)[110] <- 'beta_general_gain'
+beta_gain <- beta_gain[,c(1, 17:24, 26:49, 53:93, 105, 106, 109, 110)]
+
+colnames(beta_loss)[53] <- 'alpha_t_loss'
+colnames(beta_loss)[54] <- 'beta_t_loss'
+colnames(beta_loss)[105] <- 'beta_general_a_loss'
+colnames(beta_loss)[106] <- 'beta_general_r_loss'
+colnames(beta_loss)[110] <- 'beta_general_loss'
+beta_loss <- beta_loss[,c(1, 53:54, 105, 106, 110)]
+
+beta_gainloss <- merge(beta_gain, beta_loss, by = intersect(names(beta_gain), names(beta_loss)))
+
+beta_lm <- beta_gainloss[beta_gainloss$isExcluded_imaging==0 & beta_gainloss$isMale == 1 & !beta_gainloss$group == 'R',]
+
+colnames(beta_lm)[14]<-'Reexp'
+colnames(beta_lm)[15]<-'Avoid'
+colnames(beta_lm)[16]<-'Numb'
+colnames(beta_lm)[17]<-'Dysphoric'
+colnames(beta_lm)[18]<-'Anxious'
+colnames(beta_lm)[19]<-'CAPS_Total'
+
+beta_norm = data.frame(scale(beta_lm[,c(5,7,14:19,34:35,75:83)]))
+
+colnames(beta_norm)
+```
+
+regression
+```{r}
+model1 <- lm(CAPS_Total ~ alpha_t_gain + beta_t_gain + alpha_t_loss + beta_t_loss + beta_general_r_gain + beta_general_a_gain + beta_general_r_loss + beta_general_a_loss + age + kbit, na.action=na.omit, data = beta_norm)
+
+model_summary <- summary(model1)
+model_sum <-data.frame(model_summary$coefficients)
+
+colnames(model_sum)
+
+model_sum$var <- c(1,2,3,4,5,6,7,8,9,10,11)
+
+ggplot(data=model_sum[2:11,c(1:2,5)],aes(x = var, y=Estimate)) + 
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=Estimate-Std..Error, ymax=Estimate+Std..Error), width=0.2, position=position_dodge(0.9)) +
+  theme_classic() +
+  scale_x_continuous(breaks = c(2:11), labels=c('behav_rg', 'behav_ag', 'behav_rl', 'behav_al', 'nerual_rg', 'neural_ag', 'neural_rl', 'neural_al', 'age', 'KBIT')) +
+  labs(title='All conditions', y = "Standardized Coefficient")
+```
+
+
+
+
+variable selection
+```{r}
+# names(beta_norm)
+beta_select <- beta_norm[,c(8, 9:10, 15:16, 12, 11, 18, 17, 1:2)]
+names(beta_select)
+```
+
+subset selection, all models
+```{r}
+regfit.full <- regsubsets(CAPS_Total~., beta_select, nvmax = 10)
+reg.summary <- summary(regfit.full)
+
+names(reg.summary)
+reg.summary$bic
+
+coef(regfit.full, 2)
+
+plot(regfit.full, scale="bic")
+plot(regfit.full, scale="Cp")
+plot(regfit.full, scale="adjr2")
+
+model2 <- lm(CAPS_Total ~ beta_general_a_gain + beta_general_r_loss, na.action=na.omit, data = beta_norm)
+
+model_summary <- summary(model2)
+model_summary$coefficients
+
+```
+
+forward and backward selection
+```{r}
+regfit.fwd <- regsubsets(CAPS_Total~., beta_select, method = "forward")
+summary(regfit.fwd)
+
+plot(regfit.fwd, scale="bic")
+plot(regfit.fwd, scale="Cp")
+plot(regfit.fwd, scale="adjr2")
+
+
+regfit.bwd <- regsubsets(CAPS_Total~., beta_select, method = "backward")
+summary(regfit.bwd)
+
+plot(regfit.bwd, scale="bic")
+plot(regfit.bwd, scale="Cp")
+plot(regfit.bwd, scale="adjr2")
+```
+
+slecting models by cross validation
+```{r}
+
+```
+
+ridge regression
+```{r}
+x = model.matrix(CAPS_Total~., beta_select)[,-1]
+y = beta_select$CAPS_Total[!is.nan(rowSums(beta_select[-1]))]
+View(x)
+View(y)
+View(beta_select)
+names(beta_select[-1])
+grid = 10^seq(10,-2,length = 100)
+ridge.mod = glmnet(x,y,alpha = 0, lambda = grid)
+
+dim(coef(ridge.mod)) #no. predictors by number of lambda
+
+# coef should be much smaller with a large lambda
+ridge.mod$lambda[70]
+coef(ridge.mod)[,70]
+```
+
+
+lasso
+```{r}
+lasso.mod = glmnet(x,y,alpha=1,lambda=grid)
+
+dim(coef(lasso.mod))
+
+coef(lasso.mod)[,87]
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
